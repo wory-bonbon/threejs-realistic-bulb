@@ -1,5 +1,7 @@
 # 💡 Realistic Bulb for Three.js & WebXR
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Ultra-realistic 3D light bulb component with custom GLSL shader.  
 **WebXR ready** - Optimized for Meta Quest 2/3.
 
