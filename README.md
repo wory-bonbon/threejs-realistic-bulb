@@ -20,6 +20,10 @@ Ultra-realistic 3D light bulb component with custom GLSL shader.
 
 ### 🎥 Demo Videos
 
+**Interactive Simulator - Full Features**
+
+[![Full Demo](https://img.youtube.com/vi/4rhXMpS1U1Y/maxresdefault.jpg)](https://youtu.be/4rhXMpS1U1Y)
+
 **Pier Demo - Atmospheric Lighting**
 
 [![Pier Demo](https://img.youtube.com/vi/3iOC1D9A5s8/maxresdefault.jpg)](https://youtu.be/3iOC1D9A5s8)
@@ -101,9 +105,13 @@ Adjust via `group.scale.set(x, y, z)` to fit your scene.
 ```
 threejs-realistic-bulb/
 ├── index.html              # Interactive simulator (try all features)
-├── pier-demo.html          # Atmospheric pier scene (NEW)
+├── pier-demo.html          # Atmospheric pier scene
 ├── webxr-bulb.html         # WebXR standalone (Quest ready)
 ├── shader-bulb.html        # Minimal example (copy from here)
+├── images/
+│   ├── full-demo-highlight.mp4
+│   ├── pier-demo.mp4
+│   └── 3d_light_shader-demo.mp4
 ├── README.md
 └── LICENSE (MIT)
 ```
