@@ -15,14 +15,18 @@ Ultra-realistic 3D light bulb component with custom GLSL shader.
 | **Minimal Example** | Shader-only, clean code | [Try it](https://wory-bonbon.github.io/threejs-realistic-bulb/shader-bulb.html) |
 
 ---
+
 ### 🎥 Demo Videos
 
 **Pier Demo - Atmospheric Lighting**
-https://github.com/user-attachments/assets/b2042d11-c0fc-4f04-8e4f-ed9756bb5a4f
+
+[![Pier Demo](https://img.youtube.com/vi/3iOC1D9A5s8/0.jpg)](https://youtu.be/3iOC1D9A5s8)
 
 **Minimal Example - High-Quality Bulb**
-https://github.com/user-attachments/assets/71c0efad-160c-40e3-92ca-889eebc3a13e
 
+[![Minimal Example](https://img.youtube.com/vi/lk4QX8G0RgE/0.jpg)](https://youtu.be/lk4QX8G0RgE)
+
+---
 
 ## 🎯 For Metaverse & Web3D Developers
 
