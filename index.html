@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>照明シミュレーター 💡 | Lighting Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; overflow: hidden; margin: 0; }
+        #container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+        .control-panel { max-height: calc(100vh - 2rem); overflow-y: auto; }
+        .control-panel::-webkit-scrollbar { width: 6px; }
+        .control-panel::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 3px; }
+        .control-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 3px; }
+        input[type="range"] { width: 100%; }
+        input[type="color"] { width: 100%; height: 40px; border: none; border-radius: 6px; cursor: pointer; }
+        .preset-btn { transition: all 0.2s; }
+        .preset-btn:hover { transform: scale(1.05); }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+</head>
+<body class="bg-black text-white">
+
+    <div id="container"></div>
+
+    <!-- コントロールパネル -->
+    <div class="fixed top-4 right-4 z-50 w-80 bg-black/80 backdrop-blur-lg rounded-2xl shadow-2xl control-panel">
+        <div class="p-6">
+            <h1 class="text-2xl font-bold mb-1 bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
+                💡 照明シミュレーター
+            </h1>
+            <p class="text-xs text-gray-400 mb-6">Lighting Simulator</p>
+
+            <!-- プリセット -->
+            <div class="mb-6">
+                <h3 class="text-sm font-semibold mb-3 text-gray-300">プリセット / Presets</h3>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="applyPreset('warm')" class="preset-btn bg-orange-600 hover:bg-orange-700 text-white text-xs py-2 px-3 rounded-lg">
+                        🔥 温かい電球色
+                    </button>
+                    <button onclick="applyPreset('cool')" class="preset-btn bg-blue-600 hover:bg-blue-700 text-white text-xs py-2 px-3 rounded-lg">
+                        ❄️ クールな白
+                    </button>
+                    <button onclick="applyPreset('pink')" class="preset-btn bg-pink-600 hover:bg-pink-700 text-white text-xs py-2 px-3 rounded-lg">
+                        💗 ムーディー
+                    </button>
+                    <button onclick="applyPreset('party')" class="preset-btn bg-purple-600 hover:bg-purple-700 text-white text-xs py-2 px-3 rounded-lg">
+                        🎉 パーティー
+                    </button>
+                </div>
+            </div>
+
+            <!-- カラーピッカー -->
+            <div class="mb-6">
+                <label class="text-sm font-semibold mb-2 block text-gray-300">照明の色 / Light Color</label>
+                <input type="color" id="lightColor" value="#ffaa33" oninput="updateLightColor(this.value)">
+                <div class="text-xs text-gray-400 mt-1" id="colorHex">#ffaa33</div>
+            </div>
+
+            <!-- 照明強度 -->
+            <div class="mb-6">
+                <label class="text-sm font-semibold mb-2 block text-gray-300">
+                    照明強度 / Intensity: <span id="intensityValue">12</span>
+                </label>
+                <input type="range" id="intensity" min="0" max="50" value="12" step="1" 
+                       oninput="updateIntensity(this.value)" 
+                       class="w-full">
+            </div>
+
+            <!-- 照明範囲 -->
+            <div class="mb-6">
+                <label class="text-sm font-semibold mb-2 block text-gray-300">
+                    照明範囲 / Distance: <span id="distanceValue">30</span>m
+                </label>
+                <input type="range" id="distance" min="5" max="100" value="30" step="5" 
+                       oninput="updateDistance(this.value)" 
+                       class="w-full">
+            </div>
+
+            <!-- 電球の数 -->
+            <div class="mb-6">
+                <label class="text-sm font-semibold mb-2 block text-gray-300">
+                    電球の数 / Bulb Count: <span id="bulbCountValue">1</span>
+                </label>
+                <input type="range" id="bulbCount" min="1" max="10" value="1" step="1" 
+                       oninput="updateBulbCount(this.value)" 
+                       class="w-full">
+            </div>
+
+            <!-- 配置パターン -->
+            <div class="mb-6">
+                <label class="text-sm font-semibold mb-3 block text-gray-300">配置パターン / Layout</label>
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="setLayout('single')" id="layoutSingle" class="bg-gray-700 hover:bg-gray-600 text-white text-xs py-2 px-2 rounded-lg">
+                        単一
+                    </button>
+                    <button onclick="setLayout('circle')" id="layoutCircle" class="bg-gray-700 hover:bg-gray-600 text-white text-xs py-2 px-2 rounded-lg">
+                        円形
+                    </button>
+                    <button onclick="setLayout('grid')" id="layoutGrid" class="bg-gray-700 hover:bg-gray-600 text-white text-xs py-2 px-2 rounded-lg">
+                        グリッド
+                    </button>
+                </div>
+            </div>
+
+            <!-- 品質モード -->
+            <div class="mb-6">
+                <div class="flex items-center justify-between mb-2">
+                    <label class="text-sm font-semibold text-gray-300">高品質モード / Quality</label>
+                    <button onclick="toggleQualityMode()" id="qualityToggle" 
+                            class="bg-gray-700 hover:bg-gray-600 text-white text-xs py-1 px-3 rounded-lg">
+                        軽量
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500">高品質モードはリアルなガラス表現ですが、複数配置時は重くなります。</p>
+            </div>
+
+            <!-- 点滅制御 -->
+            <div class="mb-6">
+                <div class="flex items-center justify-between mb-2">
+                    <label class="text-sm font-semibold text-gray-300">点滅 / Blinking</label>
+                    <button onclick="toggleBlinking()" id="blinkToggle" 
+                            class="bg-gray-700 hover:bg-gray-600 text-white text-xs py-1 px-3 rounded-lg">
+                        OFF
+                    </button>
+                </div>
+                <div id="blinkControls" style="display: none;">
+                    <label class="text-xs text-gray-400 mb-1 block">
+                        速度 / Speed: <span id="blinkSpeedValue">1.0</span>秒
+                    </label>
+                    <input type="range" id="blinkSpeed" min="0.1" max="5" value="1.0" step="0.1" 
+                           oninput="updateBlinkSpeed(this.value)" 
+                           class="w-full mb-2">
+                    <div class="grid grid-cols-3 gap-2">
+                        <button onclick="setBlinkPattern('steady')" id="patternSteady" class="bg-gray-700 hover:bg-gray-600 text-white text-xs py-1 px-2 rounded">
+                            一定
+                        </button>
+                        <button onclick="setBlinkPattern('random')" id="patternRandom" class="bg-gray-700 hover:bg-gray-600 text-white text-xs py-1 px-2 rounded">
+                            ランダム
+                        </button>
+                        <button onclick="setBlinkPattern('pulse')" id="patternPulse" class="bg-gray-700 hover:bg-gray-600 text-white text-xs py-1 px-2 rounded">
+                            パルス
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ミラーボール -->
+            <div class="mb-6">
+                <div class="flex items-center justify-between mb-2">
+                    <label class="text-sm font-semibold text-gray-300">ミラーボール / Disco Ball</label>
+                    <button onclick="toggleDiscoBall()" id="discoToggle" 
+                            class="bg-gray-700 hover:bg-gray-600 text-white text-xs py-1 px-3 rounded-lg">
+                        OFF
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500">電球の光を反射してミラーボール効果を表現します。</p>
+            </div>
+
+            <!-- メインスイッチ -->
+            <div class="mt-6 pt-6 border-t border-gray-700">
+                <button onclick="toggleMainLight()" id="mainSwitch" 
+                        class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-bold py-4 px-6 rounded-xl shadow-lg transition-all duration-300 transform hover:scale-105">
+                    💡 電源 ON
+                </button>
+            </div>
+
+            <!-- リセット -->
+            <div class="mt-3">
+                <button onclick="resetToDefault()" 
+                        class="w-full bg-gray-700 hover:bg-gray-600 text-white text-sm py-2 px-4 rounded-lg">
+                    🔄 初期設定に戻す
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, controls;
+        let bulbs = []; // 複数の電球を管理
+        let pointLights = [];
+        let composer, bloomPass;
+        let isLightOn = true;
+        let currentLayout = 'single';
+        let bulbCount = 1;
+        let isHighQuality = false; // 品質モード
+        
+        // 点滅制御
+        let isBlinking = false;
+        let blinkSpeed = 1.0;
+        let blinkPattern = 'steady';
+        let blinkTimer = 0;
+        
+        // ミラーボール
+        let isDiscoMode = false;
+        let discoLights = [];
+        let discoBall = null; // ミラーボール本体
+        let discoBallRotation = 0; // 回転角度
+        
+        // 部屋の要素
+        let floor, walls, table;
+        let ambientLight;
+        
+        // 現在の照明設定
+        let currentColor = 0xffaa33;
+        let currentIntensity = 12;
+        let currentDistance = 30;
+
+        const container = document.getElementById('container');
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x050505);
+            scene.fog = new THREE.Fog(0x050505, 10, 50);
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(6, 4, 8);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 0.8;
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 4;
+            controls.maxDistance = 20;
+            controls.target.set(0, 2, 0);
+            controls.maxPolarAngle = Math.PI / 2.1;
+
+            setupLights();
+            createRoom();
+            createBulbs();
+            setupPostProcessing();
+
+            window.addEventListener('resize', onWindowResize, false);
+            animate();
+        }
+
+        function setupLights() {
+            ambientLight = new THREE.AmbientLight(0x1a1a2e, 0.15);
+            scene.add(ambientLight);
+        }
+
+        function createRoom() {
+            // 床
+            const floorGeometry = new THREE.PlaneGeometry(20, 20);
+            const floorMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x2a2a2a,
+                roughness: 0.8,
+                metalness: 0.2
+            });
+            floor = new THREE.Mesh(floorGeometry, floorMaterial);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // 壁（背面）
+            const wallGeometry = new THREE.PlaneGeometry(20, 10);
+            const wallMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x1a1a1a,
+                roughness: 0.9
+            });
+            const backWall = new THREE.Mesh(wallGeometry, wallMaterial);
+            backWall.position.set(0, 5, -10);
+            backWall.receiveShadow = true;
+            scene.add(backWall);
+
+            // テーブル
+            const tableGeometry = new THREE.BoxGeometry(3, 0.1, 1.5);
+            const tableMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x8b4513,
+                roughness: 0.7,
+                metalness: 0.1
+            });
+            table = new THREE.Mesh(tableGeometry, tableMaterial);
+            table.position.set(0, 1, 0);
+            table.castShadow = true;
+            table.receiveShadow = true;
+            scene.add(table);
+        }
+
+        function createBulbs() {
+            clearBulbs();
+            
+            const positions = getBulbPositions(bulbCount, currentLayout);
+            
+            for (let i = 0; i < positions.length; i++) {
+                const pos = positions[i];
+                const bulbGroup = createSingleBulb(pos.x, pos.y, pos.z);
+                bulbs.push(bulbGroup);
+                scene.add(bulbGroup.group);
+            }
+        }
+
+        function createSingleBulb(x = 0, y = 3, z = 0) {
+            if (isHighQuality) {
+                return createHighQualityBulb(x, y, z);
+            } else {
+                return createLowQualityBulb(x, y, z);
+            }
+        }
+
+        function createLowQualityBulb(x = 0, y = 3, z = 0) {
+            const group = new THREE.Group();
+            group.position.set(x, y, z);
+
+            // ソケット（基準点 y=0）
+            const threadGeometry = new THREE.CylinderGeometry(0.52, 0.48, 0.9, 16);
+            const threadMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x9a9a9a,
+                roughness: 0.35,
+                metalness: 0.8
+            });
+            const threadMesh = new THREE.Mesh(threadGeometry, threadMaterial);
+            threadMesh.position.y = -0.45;
+            group.add(threadMesh);
+            
+            const capGeometry = new THREE.CylinderGeometry(0.52, 0.5, 0.15, 16);
+            const capMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x666666,
+                roughness: 0.2,
+                metalness: 0.9
+            });
+            const capMesh = new THREE.Mesh(capGeometry, capMaterial);
+            capMesh.position.y = -0.975;
+            group.add(capMesh);
+
+            // ガラス部分（ソケットの上）
+            const bulbGeometry = new THREE.SphereGeometry(1.0, 32, 32);
+            const bulbMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    glowIntensity: { value: 1.2 },
+                    lightColor: { value: new THREE.Color(currentColor) }
+                },
+                vertexShader: `
+                    varying vec3 vNormal;
+                    varying vec3 vPosition;
+                    void main() {
+                        vNormal = normalize(normalMatrix * normal);
+                        vPosition = position;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float glowIntensity;
+                    uniform vec3 lightColor;
+                    varying vec3 vNormal;
+                    varying vec3 vPosition;
+                    
+                    void main() {
+                        float intensity = pow(1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0))), 2.0);
+                        vec3 glow = lightColor * intensity * glowIntensity;
+                        gl_FragColor = vec4(glow, 0.9);
+                    }
+                `,
+                transparent: true,
+                blending: THREE.AdditiveBlending
+            });
+            const bulbMesh = new THREE.Mesh(bulbGeometry, bulbMaterial);
+            bulbMesh.position.y = 1.5;  // ソケット上部から1.5の位置
+            group.add(bulbMesh);
+
+            // フィラメント
+            const filamentGeometry = new THREE.CylinderGeometry(0.02, 0.02, 2.0, 8);
+            const filamentMaterial = new THREE.MeshStandardMaterial({ 
+                color: currentColor,
+                emissive: currentColor,
+                emissiveIntensity: 2,
+                metalness: 0.5,
+                roughness: 0.5
+            });
+            const filamentMesh = new THREE.Mesh(filamentGeometry, filamentMaterial);
+            filamentMesh.position.y = 1.5;
+            group.add(filamentMesh);
+
+            // PointLight
+            const pointLight = new THREE.PointLight(currentColor, currentIntensity, currentDistance, 1.8);
+            pointLight.position.set(0, 1.5, 0);
+            pointLight.castShadow = true;
+            pointLight.shadow.mapSize.width = 1024;
+            pointLight.shadow.mapSize.height = 1024;
+            group.add(pointLight);
+
+            pointLights.push(pointLight);
+
+            return {
+                group: group,
+                bulbMesh: bulbMesh,
+                filamentMesh: filamentMesh,
+                pointLight: pointLight
+            };
+        }
+
+        function createHighQualityBulb(x = 0, y = 3, z = 0) {
+            const group = new THREE.Group();
+            group.position.set(x, y, z);
+            
+            // ソケット（オリジナルデータそのまま）
+            const threadGeometry = new THREE.CylinderGeometry(0.52, 0.48, 0.9, 32);
+            const threadMaterial = new THREE.MeshStandardMaterial({
+                color: 0x9a9a9a,
+                metalness: 0.8,
+                roughness: 0.35,
+            });
+            const threadMesh = new THREE.Mesh(threadGeometry, threadMaterial);
+            threadMesh.position.y = -0.45;
+            group.add(threadMesh);
+
+            const capGeometry = new THREE.CylinderGeometry(0.52, 0.5, 0.15, 32);
+            const capMaterial = new THREE.MeshStandardMaterial({
+                color: 0x666666,
+                metalness: 0.9,
+                roughness: 0.2,
+            });
+            const capMesh = new THREE.Mesh(capGeometry, capMaterial);
+            capMesh.position.y = -0.975;
+            group.add(capMesh);
+
+            // ガラス球体（オリジナルデータそのまま）
+            const points = [];
+            const bulbHeight = 3.2;
+            const curve = new THREE.CurvePath();
+
+            curve.add(new THREE.QuadraticBezierCurve(
+                new THREE.Vector2(0.48, 0.0),
+                new THREE.Vector2(0.47, 0.05),
+                new THREE.Vector2(0.46, 0.12)
+            ));
+
+            curve.add(new THREE.CubicBezierCurve(
+                new THREE.Vector2(0.46, 0.12),
+                new THREE.Vector2(0.5, 0.25),
+                new THREE.Vector2(0.65, 0.45),
+                new THREE.Vector2(0.88, 0.7)
+            ));
+
+            curve.add(new THREE.CubicBezierCurve(
+                new THREE.Vector2(0.88, 0.7),
+                new THREE.Vector2(1.1, 0.92),
+                new THREE.Vector2(1.22, 1.15),
+                new THREE.Vector2(1.28, 1.4)
+            ));
+
+            curve.add(new THREE.CubicBezierCurve(
+                new THREE.Vector2(1.28, 1.4),
+                new THREE.Vector2(1.3, 1.75),
+                new THREE.Vector2(1.28, 2.1),
+                new THREE.Vector2(1.2, 2.4)
+            ));
+
+            curve.add(new THREE.CubicBezierCurve(
+                new THREE.Vector2(1.2, 2.4),
+                new THREE.Vector2(1.08, 2.68),
+                new THREE.Vector2(0.9, 2.9),
+                new THREE.Vector2(0.68, 3.05)
+            ));
+
+            curve.add(new THREE.CubicBezierCurve(
+                new THREE.Vector2(0.68, 3.05),
+                new THREE.Vector2(0.48, 3.13),
+                new THREE.Vector2(0.28, 3.18),
+                new THREE.Vector2(0.12, 3.195)
+            ));
+
+            curve.add(new THREE.CubicBezierCurve(
+                new THREE.Vector2(0.12, 3.195),
+                new THREE.Vector2(0.06, 3.1985),
+                new THREE.Vector2(0.02, 3.1995),
+                new THREE.Vector2(0.0, bulbHeight)
+            ));
+
+            const sampledPoints = curve.getPoints(220);
+            const glassGeometry = new THREE.LatheGeometry(sampledPoints, 240);
+
+            // カスタムシェーダー
+            const glassShaderMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    lightPosition: { value: new THREE.Vector3(0, 1.5, 0) },
+                    lightColor: { value: new THREE.Color(currentColor) },
+                    glowIntensity: { value: 1.5 },
+                    fresnelPower: { value: 3.0 },
+                    time: { value: 0.0 }
+                },
+                vertexShader: `
+                    varying vec3 vNormal;
+                    varying vec3 vPosition;
+                    varying vec3 vViewPosition;
+                    
+                    void main() {
+                        vNormal = normalize(normalMatrix * normal);
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        vViewPosition = -mvPosition.xyz;
+                        vPosition = position;
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 lightPosition;
+                    uniform vec3 lightColor;
+                    uniform float glowIntensity;
+                    uniform float fresnelPower;
+                    uniform float time;
+                    
+                    varying vec3 vNormal;
+                    varying vec3 vPosition;
+                    varying vec3 vViewPosition;
+                    
+                    void main() {
+                        vec3 viewDir = normalize(vViewPosition);
+                        float fresnel = pow(1.0 - abs(dot(viewDir, vNormal)), fresnelPower);
+                        
+                        float distToLight = distance(vPosition, lightPosition);
+                        float falloff = 1.0 / (1.0 + distToLight * distToLight * 0.15);
+                        
+                        vec3 toLight = normalize(lightPosition - vPosition);
+                        float diffuse = max(dot(vNormal, toLight), 0.0);
+                        
+                        float heightGradient = smoothstep(-0.2, 0.5, vPosition.y) * 
+                                               smoothstep(3.5, 2.0, vPosition.y);
+                        
+                        float topBoost = smoothstep(2.0, 3.2, vPosition.y) * 1.5;
+                        
+                        float flicker = 0.95 + sin(time * 2.0) * 0.05;
+                        
+                        vec3 glow = lightColor * (falloff + topBoost) * glowIntensity * (heightGradient + 0.8) * flicker;
+                        
+                        vec3 glassColor = vec3(0.95, 0.97, 1.0);
+                        vec3 edgeGlow = lightColor * fresnel * 0.5;
+                        vec3 finalColor = glassColor * 0.15 + glow + edgeGlow;
+                        
+                        float alpha = 0.3 + fresnel * 0.5 + (falloff + topBoost) * 0.3;
+                        
+                        gl_FragColor = vec4(finalColor, alpha);
+                    }
+                `,
+                transparent: true,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+
+            const bulbMesh = new THREE.Mesh(glassGeometry, glassShaderMaterial);
+            bulbMesh.position.y = 0;  // ソケットの上
+            group.add(bulbMesh);
+
+            // 外側ガラス
+            const outerGlassMaterial = new THREE.MeshPhysicalMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.15,
+                metalness: 0.0,
+                roughness: 0.05,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.05,
+                transmission: 0.95,
+                ior: 1.52,
+                reflectivity: 0.5,
+                side: THREE.FrontSide,
+            });
+
+            const outerGlassMesh = new THREE.Mesh(glassGeometry, outerGlassMaterial);
+            outerGlassMesh.position.y = 0;
+            group.add(outerGlassMesh);
+
+            // フィラメント
+            const filamentGroup = new THREE.Group();
+            filamentGroup.position.y = 0;
+            
+            const supportGeometry = new THREE.CylinderGeometry(0.02, 0.02, 2.4, 8);
+            const supportMaterial = new THREE.MeshStandardMaterial({
+                color: 0x333333,
+                metalness: 0.7,
+                roughness: 0.3,
+            });
+            const supportMesh = new THREE.Mesh(supportGeometry, supportMaterial);
+            supportMesh.position.y = 1.2;
+            filamentGroup.add(supportMesh);
+
+            const helixPath = new THREE.CurvePath();
+            const helixSegments = 90;
+            const helixHeight = 1.4;
+            const helixRadius = 0.22;
+            const helixTurns = 8;
+
+            for (let i = 0; i < helixSegments; i++) {
+                const t1 = i / helixSegments;
+                const t2 = (i + 1) / helixSegments;
+                const angle1 = t1 * Math.PI * 2 * helixTurns;
+                const angle2 = t2 * Math.PI * 2 * helixTurns;
+                const y1 = t1 * helixHeight + 0.9;
+                const y2 = t2 * helixHeight + 0.9;
+                
+                helixPath.add(new THREE.LineCurve3(
+                    new THREE.Vector3(Math.cos(angle1) * helixRadius, y1, Math.sin(angle1) * helixRadius),
+                    new THREE.Vector3(Math.cos(angle2) * helixRadius, y2, Math.sin(angle2) * helixRadius)
+                ));
+            }
+
+            const tubeGeometry = new THREE.TubeGeometry(helixPath, helixSegments, 0.01, 6, false);
+            const filamentMaterial = new THREE.MeshStandardMaterial({
+                color: currentColor,
+                emissive: currentColor,
+                emissiveIntensity: 4.0,
+                metalness: 0.3,
+                roughness: 0.7,
+            });
+            const filamentWire = new THREE.Mesh(tubeGeometry, filamentMaterial);
+            filamentGroup.add(filamentWire);
+
+            group.add(filamentGroup);
+
+            // PointLight（オリジナルと同じ位置）
+            const pointLight = new THREE.PointLight(currentColor, currentIntensity, currentDistance, 1.8);
+            pointLight.position.set(0, 1.5, 0);
+            pointLight.castShadow = true;
+            pointLight.shadow.mapSize.width = 1024;
+            pointLight.shadow.mapSize.height = 1024;
+            group.add(pointLight);
+
+            pointLights.push(pointLight);
+
+            return {
+                group: group,
+                bulbMesh: bulbMesh,
+                filamentMesh: filamentGroup,
+                pointLight: pointLight
+            };
+        }
+
+        function getBulbPositions(count, layout) {
+            const positions = [];
+            
+            if (layout === 'single' || count === 1) {
+                positions.push({ x: 0, y: 3, z: 0 });
+            } else if (layout === 'circle') {
+                const radius = 4; // 2m → 4mに拡大
+                for (let i = 0; i < count; i++) {
+                    const angle = (i / count) * Math.PI * 2;
+                    positions.push({
+                        x: Math.cos(angle) * radius,
+                        y: 3,
+                        z: Math.sin(angle) * radius
+                    });
+                }
+            } else if (layout === 'grid') {
+                const cols = Math.ceil(Math.sqrt(count));
+                const rows = Math.ceil(count / cols);
+                const spacing = 3; // 1.5m → 3mに拡大
+                let index = 0;
+                
+                for (let row = 0; row < rows && index < count; row++) {
+                    for (let col = 0; col < cols && index < count; col++) {
+                        positions.push({
+                            x: (col - (cols - 1) / 2) * spacing,
+                            y: 3,
+                            z: (row - (rows - 1) / 2) * spacing
+                        });
+                        index++;
+                    }
+                }
+            }
+            
+            return positions;
+        }
+
+        function clearBulbs() {
+            bulbs.forEach(bulb => {
+                scene.remove(bulb.group);
+            });
+            bulbs = [];
+            pointLights = [];
+        }
+
+        function setupPostProcessing() {
+            composer = new THREE.EffectComposer(renderer);
+            const renderPass = new THREE.RenderPass(scene, camera);
+            composer.addPass(renderPass);
+
+            bloomPass = new THREE.UnrealBloomPass(
+                new THREE.Vector2(window.innerWidth, window.innerHeight),
+                1.5, 0.4, 0.85
+            );
+            composer.addPass(bloomPass);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            controls.update();
+            
+            // 点滅処理
+            if (isBlinking && isLightOn) {
+                blinkTimer += 0.016; // 約60FPS
+                handleBlinking();
+            }
+            
+            // ミラーボール処理
+            if (isDiscoMode) {
+                updateDiscoBall();
+            }
+            
+            composer.render();
+        }
+
+        function handleBlinking() {
+            let shouldBeOn = true;
+            
+            if (blinkPattern === 'steady') {
+                shouldBeOn = Math.floor(blinkTimer / blinkSpeed) % 2 === 0;
+            } else if (blinkPattern === 'random') {
+                shouldBeOn = Math.random() > 0.5;
+            } else if (blinkPattern === 'pulse') {
+                const phase = (blinkTimer / blinkSpeed) % 1;
+                const intensity = Math.sin(phase * Math.PI);
+                bulbs.forEach(bulb => {
+                    bulb.pointLight.intensity = currentIntensity * intensity;
+                    bulb.bulbMesh.material.uniforms.glowIntensity.value = 1.2 * intensity;
+                });
+                return;
+            }
+            
+            const targetIntensity = shouldBeOn ? currentIntensity : 0;
+            const targetGlow = shouldBeOn ? 1.2 : 0;
+            
+            bulbs.forEach(bulb => {
+                bulb.pointLight.intensity = targetIntensity;
+                bulb.bulbMesh.material.uniforms.glowIntensity.value = targetGlow;
+            });
+        }
+
+        function updateDiscoBall() {
+            // ミラーボール本体を回転
+            if (discoBall) {
+                discoBallRotation += 0.01; // 固定速度で回転
+                discoBall.rotation.y = discoBallRotation;
+                discoBall.rotation.x = discoBallRotation * 0.5;
+            }
+            
+            // 反射光点を更新（360度全方向に球面状に移動）
+            discoLights.forEach((light, index) => {
+                // ミラーボールの回転に応じて光点を球面状に移動
+                const phi = discoBallRotation * 2 + (index / discoLights.length) * Math.PI * 2;
+                const theta = Math.sin(discoBallRotation * 0.7 + index * 0.5) * Math.PI * 0.8 + Math.PI * 0.5;
+                const radius = 3.5 + Math.sin(discoBallRotation * 1.5 + index) * 1.0;
+                
+                // 球面座標から直交座標に変換
+                const x = Math.sin(theta) * Math.cos(phi) * radius;
+                const y = Math.cos(theta) * radius * 0.6 + 1.8; // 床から天井まで動く
+                const z = Math.sin(theta) * Math.sin(phi) * radius;
+                
+                light.position.set(x, y, z);
+                
+                // 電球の色を反映
+                light.color.setHex(currentColor);
+                
+                // 電球の強度を反映（ミラーボール効果）
+                const baseIntensity = isLightOn ? currentIntensity * 0.35 : 0; // 0.2から0.35に増加
+                const flicker = Math.sin(discoBallRotation * 4 + index * 0.3) * 0.4 + 0.6;
+                light.intensity = baseIntensity * flicker;
+            });
+        }
+
+        // UI制御関数
+        function updateLightColor(hex) {
+            currentColor = parseInt(hex.replace('#', '0x'));
+            document.getElementById('colorHex').textContent = hex;
+            
+            bulbs.forEach(bulb => {
+                bulb.pointLight.color.setHex(currentColor);
+                bulb.bulbMesh.material.uniforms.lightColor.value.setHex(currentColor);
+                
+                // フィラメントの色を制御（高品質・低品質両対応）
+                if (bulb.filamentMesh.material) {
+                    // 低品質版：filamentMesh自体がMesh
+                    bulb.filamentMesh.material.color.setHex(currentColor);
+                    bulb.filamentMesh.material.emissive.setHex(currentColor);
+                } else if (bulb.filamentMesh.children && bulb.filamentMesh.children[1]) {
+                    // 高品質版：filamentMesh.children[1]がフィラメントワイヤー
+                    bulb.filamentMesh.children[1].material.color.setHex(currentColor);
+                    bulb.filamentMesh.children[1].material.emissive.setHex(currentColor);
+                }
+            });
+        }
+
+        function updateIntensity(value) {
+            currentIntensity = parseFloat(value);
+            document.getElementById('intensityValue').textContent = value;
+            
+            if (isLightOn && !isBlinking) {
+                bulbs.forEach(bulb => {
+                    bulb.pointLight.intensity = currentIntensity;
+                });
+            }
+        }
+
+        function updateDistance(value) {
+            currentDistance = parseFloat(value);
+            document.getElementById('distanceValue').textContent = value;
+            
+            bulbs.forEach(bulb => {
+                bulb.pointLight.distance = currentDistance;
+            });
+        }
+
+        function updateBulbCount(value) {
+            bulbCount = parseInt(value);
+            document.getElementById('bulbCountValue').textContent = value;
+            createBulbs();
+        }
+
+        function setLayout(layout) {
+            currentLayout = layout;
+            
+            // ボタンのハイライト
+            ['layoutSingle', 'layoutCircle', 'layoutGrid'].forEach(id => {
+                document.getElementById(id).classList.remove('bg-blue-600');
+                document.getElementById(id).classList.add('bg-gray-700');
+            });
+            document.getElementById('layout' + layout.charAt(0).toUpperCase() + layout.slice(1)).classList.remove('bg-gray-700');
+            document.getElementById('layout' + layout.charAt(0).toUpperCase() + layout.slice(1)).classList.add('bg-blue-600');
+            
+            createBulbs();
+        }
+
+        function toggleBlinking() {
+            isBlinking = !isBlinking;
+            const toggle = document.getElementById('blinkToggle');
+            const controls = document.getElementById('blinkControls');
+            
+            if (isBlinking) {
+                toggle.textContent = 'ON';
+                toggle.classList.add('bg-green-600');
+                controls.style.display = 'block';
+                blinkTimer = 0;
+            } else {
+                toggle.textContent = 'OFF';
+                toggle.classList.remove('bg-green-600');
+                controls.style.display = 'none';
+                
+                // 通常状態に戻す
+                if (isLightOn) {
+                    bulbs.forEach(bulb => {
+                        bulb.pointLight.intensity = currentIntensity;
+                        bulb.bulbMesh.material.uniforms.glowIntensity.value = 1.2;
+                    });
+                }
+            }
+        }
+
+        function updateBlinkSpeed(value) {
+            blinkSpeed = parseFloat(value);
+            document.getElementById('blinkSpeedValue').textContent = value;
+        }
+
+        function setBlinkPattern(pattern) {
+            blinkPattern = pattern;
+            
+            ['patternSteady', 'patternRandom', 'patternPulse'].forEach(id => {
+                document.getElementById(id).classList.remove('bg-blue-600');
+                document.getElementById(id).classList.add('bg-gray-700');
+            });
+            document.getElementById('pattern' + pattern.charAt(0).toUpperCase() + pattern.slice(1)).classList.remove('bg-gray-700');
+            document.getElementById('pattern' + pattern.charAt(0).toUpperCase() + pattern.slice(1)).classList.add('bg-blue-600');
+            
+            blinkTimer = 0;
+        }
+
+        function toggleDiscoBall() {
+            isDiscoMode = !isDiscoMode;
+            const toggle = document.getElementById('discoToggle');
+            
+            if (isDiscoMode) {
+                toggle.textContent = 'ON';
+                toggle.classList.add('bg-green-600');
+                createDiscoBall();
+            } else {
+                toggle.textContent = 'OFF';
+                toggle.classList.remove('bg-green-600');
+                removeDiscoBall();
+            }
+        }
+
+        function createDiscoBall() {
+            // ミラーボール本体（鏡面球体）
+            const ballGeometry = new THREE.SphereGeometry(0.45, 20, 20);
+            const ballMaterial = new THREE.MeshStandardMaterial({
+                color: 0xcccccc,
+                metalness: 1.0,
+                roughness: 0.1,
+                envMapIntensity: 1.0
+            });
+            discoBall = new THREE.Mesh(ballGeometry, ballMaterial);
+            discoBall.position.set(2.5, 3.5, 2.5); // 少し高め + 手前に配置
+            scene.add(discoBall);
+            
+            // 反射光点を60個作成（360度全方向に分散）
+            const spotCount = 60;
+            for (let i = 0; i < spotCount; i++) {
+                const light = new THREE.PointLight(currentColor, 3.5, 10, 2); // 強度3.5、範囲10mに拡大
+                
+                // 球面状にランダム配置（床・壁・天井全体）
+                const phi = Math.random() * Math.PI * 2; // 水平角度
+                const theta = Math.random() * Math.PI; // 垂直角度
+                const radius = 3 + Math.random() * 2;
+                
+                light.position.set(
+                    Math.sin(theta) * Math.cos(phi) * radius,
+                    Math.cos(theta) * radius * 0.5 + 1.5, // Y座標を調整（床から天井まで）
+                    Math.sin(theta) * Math.sin(phi) * radius
+                );
+                
+                scene.add(light);
+                discoLights.push(light);
+            }
+        }
+
+        function removeDiscoBall() {
+            // ミラーボール本体を削除
+            if (discoBall) {
+                scene.remove(discoBall);
+                discoBall = null;
+            }
+            
+            // 反射光点を削除
+            discoLights.forEach(light => {
+                scene.remove(light);
+            });
+            discoLights = [];
+            discoBallRotation = 0;
+        }
+
+        function toggleMainLight() {
+            isLightOn = !isLightOn;
+            const button = document.getElementById('mainSwitch');
+            
+            if (isLightOn) {
+                button.innerHTML = '💡 電源 ON';
+                button.classList.remove('bg-gray-700');
+                button.classList.add('bg-gradient-to-r', 'from-yellow-500', 'to-orange-500');
+                
+                if (!isBlinking) {
+                    bulbs.forEach(bulb => {
+                        bulb.pointLight.intensity = currentIntensity;
+                        bulb.bulbMesh.material.uniforms.glowIntensity.value = 1.2;
+                        
+                        // フィラメントの発光を制御（高品質・低品質両対応）
+                        if (bulb.filamentMesh.material) {
+                            // 低品質版：filamentMesh自体がMesh
+                            bulb.filamentMesh.material.emissiveIntensity = 2;
+                        } else if (bulb.filamentMesh.children && bulb.filamentMesh.children[1]) {
+                            // 高品質版：filamentMesh.children[1]がフィラメントワイヤー
+                            bulb.filamentMesh.children[1].material.emissiveIntensity = 4.0;
+                        }
+                    });
+                }
+            } else {
+                button.innerHTML = '💡 電源 OFF';
+                button.classList.remove('bg-gradient-to-r', 'from-yellow-500', 'to-orange-500');
+                button.classList.add('bg-gray-700');
+                
+                bulbs.forEach(bulb => {
+                    bulb.pointLight.intensity = 0;
+                    bulb.bulbMesh.material.uniforms.glowIntensity.value = 0;
+                    
+                    // フィラメントの発光を制御（高品質・低品質両対応）
+                    if (bulb.filamentMesh.material) {
+                        // 低品質版：filamentMesh自体がMesh
+                        bulb.filamentMesh.material.emissiveIntensity = 0;
+                    } else if (bulb.filamentMesh.children && bulb.filamentMesh.children[1]) {
+                        // 高品質版：filamentMesh.children[1]がフィラメントワイヤー
+                        bulb.filamentMesh.children[1].material.emissiveIntensity = 0;
+                    }
+                });
+            }
+        }
+
+        function applyPreset(preset) {
+            const presets = {
+                warm: { color: '#ffaa33', intensity: 12, distance: 30 },
+                cool: { color: '#e0f0ff', intensity: 15, distance: 35 },
+                pink: { color: '#ff1493', intensity: 10, distance: 25 },
+                party: { color: '#ff00ff', intensity: 20, distance: 40 }
+            };
+            
+            const p = presets[preset];
+            document.getElementById('lightColor').value = p.color;
+            document.getElementById('intensity').value = p.intensity;
+            document.getElementById('distance').value = p.distance;
+            
+            updateLightColor(p.color);
+            updateIntensity(p.intensity);
+            updateDistance(p.distance);
+            
+            if (preset === 'party') {
+                if (!isBlinking) toggleBlinking();
+                setBlinkPattern('random');
+                updateBlinkSpeed(0.3);
+                document.getElementById('blinkSpeed').value = 0.3;
+            }
+        }
+
+        function resetToDefault() {
+            document.getElementById('lightColor').value = '#ffaa33';
+            document.getElementById('intensity').value = 12;
+            document.getElementById('distance').value = 30;
+            document.getElementById('bulbCount').value = 1;
+            
+            updateLightColor('#ffaa33');
+            updateIntensity(12);
+            updateDistance(30);
+            updateBulbCount(1);
+            
+            if (isBlinking) toggleBlinking();
+            if (isDiscoMode) toggleDiscoBall();
+            
+            setLayout('single');
+            
+            if (!isLightOn) toggleMainLight();
+        }
+
+        function toggleQualityMode() {
+            isHighQuality = !isHighQuality;
+            const toggle = document.getElementById('qualityToggle');
+            
+            if (isHighQuality) {
+                toggle.textContent = '高品質';
+                toggle.classList.add('bg-blue-600');
+                toggle.classList.remove('bg-gray-700');
+            } else {
+                toggle.textContent = '軽量';
+                toggle.classList.remove('bg-blue-600');
+                toggle.classList.add('bg-gray-700');
+            }
+            
+            // 電球を再生成
+            createBulbs();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        init();
+    </script>
+
+</body>
+</html>
